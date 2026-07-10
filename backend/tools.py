@@ -66,31 +66,34 @@ class CsvTools:
                 )
             df = df[df[column].astype(str) == str(value)]
 
-        if group_by:
-            if group_by not in df.columns:
-                return json.dumps(
-                    {
-                        "error": (
-                            f"Unknown column '{group_by}'. Available columns:"
-                            f" {list(df.columns)}"
-                        )
-                    }
-                )
-            result = df.groupby(group_by).size().reset_index(name="count")
-            if sort_by and sort_by in result.columns:
-                result = result.sort_values(sort_by, ascending=ascending)
-            return result.head(limit).to_json(orient="records")
+        try:
+            if group_by:
+                if group_by not in df.columns:
+                    return json.dumps(
+                        {
+                            "error": (
+                                f"Unknown column '{group_by}'. Available columns:"
+                                f" {list(df.columns)}"
+                            )
+                        }
+                    )
+                result = df.groupby(group_by).size().reset_index(name="count")
+                if sort_by and sort_by in result.columns:
+                    result = result.sort_values(sort_by, ascending=ascending)
+                return result.head(limit).to_json(orient="records")
 
-        if sort_by:
-            if sort_by not in df.columns:
-                return json.dumps(
-                    {
-                        "error": (
-                            f"Unknown column '{sort_by}'. Available columns:"
-                            f" {list(df.columns)}"
-                        )
-                    }
-                )
-            df = df.sort_values(sort_by, ascending=ascending)
+            if sort_by:
+                if sort_by not in df.columns:
+                    return json.dumps(
+                        {
+                            "error": (
+                                f"Unknown column '{sort_by}'. Available columns:"
+                                f" {list(df.columns)}"
+                            )
+                        }
+                    )
+                df = df.sort_values(sort_by, ascending=ascending)
 
-        return df.head(limit).to_json(orient="records")
+            return df.head(limit).to_json(orient="records")
+        except Exception as e:
+            return json.dumps({"error": str(e)})
