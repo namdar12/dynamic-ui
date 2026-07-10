@@ -1,9 +1,0 @@
-name,category,price,in_stock
-Widget A,Tools,9.99,true
-Widget B,Tools,14.99,false
-Gadget X,Electronics,29.99,true
-Gadget Y,Electronics,49.99,true
-Gizmo Z,Electronics,19.99,false
-Hammer Pro,Tools,24.99,true
-Screwdriver Set,Tools,12.49,true
-Bluetooth Speaker,Electronics,39.99,false
