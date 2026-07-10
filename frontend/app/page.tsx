@@ -53,9 +53,18 @@ export default function Home() {
         setMessages((prev) => [...prev, { role: 'agent', text: data.text }]);
       }
       if (data.a2uiMessages?.length) {
-        processorRef.current.processMessages(data.a2uiMessages);
+        const proc = processorRef.current;
+        // Every turn's response re-creates surface "main" from scratch (the
+        // backend is stateless and has no memory of prior turns). But
+        // MessageProcessor throws if createSurface targets an id that's
+        // already in use, so delete the previous turn's surface first.
+        if (proc.model.getSurface('main')) {
+          proc.model.deleteSurface('main');
+        }
+        proc.processMessages(data.a2uiMessages);
       }
-    } catch {
+    } catch (err) {
+      console.error('Agent request failed:', err);
       setError('Could not reach the agent.');
     } finally {
       setLoading(false);
