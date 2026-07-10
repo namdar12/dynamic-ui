@@ -975,6 +975,64 @@
         }
       ],
       "unevaluatedProperties": false
+    },
+    "Chart": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "common_types.json#/$defs/ComponentCommon"
+        },
+        {
+          "$ref": "#/$defs/CatalogComponentCommon"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "component": {
+              "const": "Chart"
+            },
+            "chartType": {
+              "type": "string",
+              "enum": [
+                "bar",
+                "line"
+              ],
+              "description": "Whether to render a bar chart or a line chart."
+            },
+            "xKey": {
+              "type": "string",
+              "description": "The key in each data row to use for the x-axis (category/label axis)."
+            },
+            "yKey": {
+              "type": "string",
+              "description": "The key in each data row to use for the y-axis (numeric value axis)."
+            },
+            "xLabel": {
+              "type": "string",
+              "description": "Optional human-readable label for the x-axis."
+            },
+            "yLabel": {
+              "type": "string",
+              "description": "Optional human-readable label for the y-axis."
+            },
+            "data": {
+              "type": "array",
+              "description": "Chart data rows. Each row is an object containing at least the xKey and yKey fields, e.g. {'name': 'Widget A', 'price': 9.99}.",
+              "items": {
+                "type": "object"
+              }
+            }
+          },
+          "required": [
+            "component",
+            "chartType",
+            "xKey",
+            "yKey",
+            "data"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
     }
   },
   "functions": {
@@ -1588,6 +1646,9 @@
         },
         {
           "$ref": "#/components/Table"
+        },
+        {
+          "$ref": "#/components/Chart"
         }
       ],
       "discriminator": {
