@@ -1,7 +1,8 @@
-"""Entrypoint: loads the CSV, builds the agent, serves it over A2A."""
+"""Entrypoint: connects to lib-data-access's MCP server, builds the agent, serves it over A2A."""
 
 import logging
 import os
+from contextlib import AsyncExitStack, asynccontextmanager
 
 import click
 import uvicorn
@@ -13,8 +14,6 @@ from starlette.middleware.cors import CORSMiddleware
 
 from agent import DynamicUIAgent
 from agent_executor import DynamicUIAgentExecutor
-from csv_store import CsvLoadError, load_dataframe
-from tools import CsvTools
 
 load_dotenv()
 
@@ -34,28 +33,34 @@ def main(host, port):
         if not os.getenv("GEMINI_API_KEY"):
             raise MissingConfigError("GEMINI_API_KEY environment variable not set.")
 
-        csv_path = os.getenv("CSV_PATH", "sample_data.csv")
-        try:
-            dataframe = load_dataframe(csv_path)
-        except CsvLoadError as e:
-            raise MissingConfigError(str(e)) from e
+        mcp_url = os.getenv("LIB_DATA_ACCESS_MCP_URL")
+        if not mcp_url:
+            raise MissingConfigError(
+                "LIB_DATA_ACCESS_MCP_URL environment variable not set."
+            )
 
         base_url = f"http://{host}:{port}"
         model_name = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
 
-        agent = DynamicUIAgent(
-            CsvTools(dataframe), base_url=base_url, model_name=model_name
-        )
+        agent = DynamicUIAgent(mcp_url, base_url=base_url, model_name=model_name)
         agent_executor = DynamicUIAgentExecutor(agent)
 
         request_handler = DefaultRequestHandler(
             agent_executor=agent_executor,
             task_store=InMemoryTaskStore(),
         )
+
+        @asynccontextmanager
+        async def lifespan(app):
+            async with AsyncExitStack() as stack:
+                await agent.connect(stack)
+                logger.info("Connected to lib-data-access MCP server at %s", mcp_url)
+                yield
+
         server = A2AStarletteApplication(
             agent_card=agent.agent_card, http_handler=request_handler
         )
-        app = server.build()
+        app = server.build(lifespan=lifespan)
         app.add_middleware(
             CORSMiddleware,
             allow_origin_regex=r"http://localhost:\d+",
