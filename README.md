@@ -21,7 +21,7 @@ renderer.
    cp .env.example .env
    # Edit .env with your GEMINI_API_KEY, and CSV_PATH if using your own CSV
    uv sync
-   uv run python -m .
+   uv run .
    ```
    Serves on `http://localhost:8000`.
 
