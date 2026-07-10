@@ -29,7 +29,7 @@ class DynamicUIAgentExecutor(AgentExecutor):
         )
         logger.info(f"Query: {query!r}, A2UI active: {bool(active_ui_version)}")
 
-        text, a2ui_messages = self._agent.answer(query)
+        text, a2ui_messages = await self._agent.answer(query)
 
         parts: list[Part] = [Part(root=TextPart(text=text))]
         if active_ui_version and a2ui_messages:
