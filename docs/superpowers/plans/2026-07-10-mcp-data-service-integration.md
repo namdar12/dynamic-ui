@@ -1,22 +1,22 @@
-# lib-data-access Integration Implementation Plan
+# MCP Data-Service Integration Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace `dynamic-ui`'s CSV-backed data source with a live connection to `lib-data-access`'s MCP server — the agent answers questions using real Postgres data (vendor/gl_line/rule_exception) instead of a flat file.
+**Goal:** Replace `dynamic-ui`'s CSV-backed data source with a live connection to an MCP data service — the agent answers questions using real relational data instead of a flat file. The bundled `mock-data/` server (synthetic customers/orders/products) is the reference service; any MCP server exposing the `describe_query` + `query_*` convention works.
 
-**Architecture:** `agent.py`'s `DynamicUIAgent` opens a persistent `mcp.ClientSession` to `lib-data-access` at server startup (via a Starlette lifespan hook, kept alive by an `AsyncExitStack` for the process lifetime), discovers its tools, and runs a hand-rolled multi-turn tool-calling loop (automatic function calling is disabled — passing a live MCP session to it crashes on an unpicklable object inside `google-genai`'s config deep-copy). Each MCP tool's JSON Schema converts directly to a `FunctionDeclaration` via the public `parameters_json_schema` field. `agent_executor.py` and the entire frontend are unaffected — only `DynamicUIAgent.answer()` becomes `async`, its return contract is unchanged.
+**Architecture:** `agent.py`'s `DynamicUIAgent` opens a persistent `mcp.ClientSession` to the data service at server startup (via a Starlette lifespan hook, kept alive by an `AsyncExitStack` for the process lifetime), discovers its tools, and runs a hand-rolled multi-turn tool-calling loop (automatic function calling is disabled — passing a live MCP session to it crashes on an unpicklable object inside `google-genai`'s config deep-copy). Each MCP tool's JSON Schema converts directly to a `FunctionDeclaration` via the public `parameters_json_schema` field. `agent_executor.py` and the entire frontend are unaffected — only `DynamicUIAgent.answer()` becomes `async`, its return contract is unchanged.
 
-**Tech Stack:** Python 3.12, `mcp` (already installed, `>=1.28.1`), `google-genai` (async client), existing `a2a-sdk`/`a2ui-agent-sdk` stack.
+**Tech Stack:** Python 3.12, `mcp` (`>=1.28.1,<2`), `google-genai` (async client), existing `a2a-sdk`/`a2ui-agent-sdk` stack.
 
 ## Global Constraints
 
-- `lib-data-access`'s demo service must already be running and reachable at `http://localhost:8001/mcp/` before any task's verification steps — this plan does not start or manage that service (it's a sibling project, out of scope here). If it's not running: `cd /Users/namdarmesri/Companies/E360/ep/lib-data-access && export DATABASE_URL="postgresql+asyncpg://demo:demo@localhost:5432/demo" && poetry run uvicorn examples.postgres_app.app:app --host 0.0.0.0 --port 8001` (Postgres via `docker compose -f examples/postgres_app/docker-compose.yml up -d` must also be up).
-- `dynamic-ui`'s backend stays on `:8000`, `lib-data-access` stays on `:8001` — do not let either task change these.
+- A compatible MCP data service must already be running and reachable at `http://localhost:8001/mcp/` before any task's verification steps — the bundled one: `cd mock-data && uv run server.py` (this plan does not start or manage that service).
+- `dynamic-ui`'s backend stays on `:8000`, the data service stays on `:8001` — do not let either task change these.
 - No Google ADK — Gemini is called directly via `google-genai`'s async client (`client.aio.models.generate_content`).
 - `automatic_function_calling` must be explicitly disabled (`types.AutomaticFunctionCallingConfig(disable=True)`) in every `generate_content` call in `agent.py` — this is not optional, it's the fix for the deep-copy crash documented in the spec.
 - Tool schema conversion uses only the public `FunctionDeclaration.parameters_json_schema` field — never the private `google.genai._mcp_utils` module.
 - This is a full replacement of the CSV data source, not a fallback/toggle — `csv_store.py`, `tools.py`, and `sample_data.csv` are deleted, not kept.
-- No automated test suite (unchanged project-wide decision) — every task is verified by running a real command against the real running `lib-data-access` service and checking real output.
+- No automated test suite (unchanged project-wide decision) — every task is verified by running a real command against the real running data service and checking real output.
 - `GEMINI_API_KEY` is already set in the shell environment for verification steps — never print `.env` contents or the raw key value.
 
 ---
@@ -28,7 +28,7 @@
 - Modify: `backend/pyproject.toml`
 
 **Interfaces:**
-- Produces: `LIB_DATA_ACCESS_MCP_URL` env var convention, used by Task 4's `__main__.py`.
+- Produces: `MCP_DATA_URL` env var convention, used by Task 4's `__main__.py`.
 
 - [ ] **Step 1: Update `.env.example`**
 
@@ -38,8 +38,9 @@ Replace its content with:
 # Get your API key at: https://aistudio.google.com/apikey
 GEMINI_API_KEY=your_gemini_api_key_here
 
-# URL of lib-data-access's live MCP server (Streamable-HTTP).
-LIB_DATA_ACCESS_MCP_URL=http://localhost:8001/mcp/
+# URL of the MCP data server (Streamable-HTTP).
+# The bundled mock server in ../mock-data serves at this URL.
+MCP_DATA_URL=http://localhost:8001/mcp/
 
 # Optional override of the Gemini model.
 GEMINI_MODEL=gemini-3-flash-preview
@@ -49,13 +50,13 @@ GEMINI_MODEL=gemini-3-flash-preview
 
 ```bash
 cd /Users/namdarmesri/Projects/dynamic-ui/backend
-grep -q '^LIB_DATA_ACCESS_MCP_URL=' .env 2>/dev/null || printf 'LIB_DATA_ACCESS_MCP_URL=http://localhost:8001/mcp/\n' >> .env
+grep -q '^MCP_DATA_URL=' .env 2>/dev/null || printf 'MCP_DATA_URL=http://localhost:8001/mcp/\n' >> .env
 ```
 (Do not print `.env`'s contents — it contains the live API key.)
 
 - [ ] **Step 3: Remove `pandas` from `pyproject.toml`'s dependency list**
 
-`pandas` is only used by `tools.py`/`csv_store.py`, both deleted in Task 5 — remove it now so `pyproject.toml` stays accurate. In the `dependencies = [...]` list, delete the line `"pandas>=2.2",`. Leave every other dependency (including `"mcp>=1.28.1"`, already present) untouched.
+`pandas` is only used by `tools.py`/`csv_store.py`, both deleted in Task 5 — remove it now so `pyproject.toml` stays accurate. In the `dependencies = [...]` list, delete the line `"pandas>=2.2",`. Leave every other dependency untouched (note: `mcp` is pinned `>=1.28.1,<2` — v1 API, which this plan's `streamablehttp_client`/`FastMCP` usage targets).
 
 - [ ] **Step 4: Verify**
 
@@ -68,7 +69,7 @@ Expected: completes with no errors (this will report removing `pandas` and its t
 
 ```bash
 cd /Users/namdarmesri/Projects/dynamic-ui && git add backend/.env.example backend/pyproject.toml backend/uv.lock
-git commit -m "Add LIB_DATA_ACCESS_MCP_URL config, drop now-unused pandas dependency"
+git commit -m "Add MCP_DATA_URL config, drop now-unused pandas dependency"
 ```
 
 ---
@@ -79,7 +80,7 @@ git commit -m "Add LIB_DATA_ACCESS_MCP_URL config, drop now-unused pandas depend
 - Modify: `backend/agent.py` (full rewrite)
 
 **Interfaces:**
-- Consumes: `lib-data-access`'s live MCP server at `LIB_DATA_ACCESS_MCP_URL`.
+- Consumes: the MCP data service at `MCP_DATA_URL`.
 - Produces: `DynamicUIAgent(mcp_url: str, base_url: str, model_name: str = "gemini-3-flash-preview")` with:
   - `.catalog_id -> str`, `.agent_card -> AgentCard` (unchanged from before).
   - `async def connect(self, stack: contextlib.AsyncExitStack) -> None` — new. Must be called once before `answer()`.
@@ -88,7 +89,7 @@ git commit -m "Add LIB_DATA_ACCESS_MCP_URL config, drop now-unused pandas depend
 - [ ] **Step 1: Replace `backend/agent.py` with this exact content**
 
 ```python
-"""DynamicUIAgent: answers questions via Gemini + lib-data-access's live MCP
+"""DynamicUIAgent: answers questions via Gemini + a live MCP data
 server, no Google ADK.
 
 Tool calls are dispatched manually (automatic_function_calling is disabled)
@@ -97,9 +98,9 @@ automatic function calling crashes -- generate_content unconditionally
 deep-copies the request config, and a live session holds an unpicklable
 asyncio.Future. Converting each MCP tool's schema to a plain
 FunctionDeclaration via the public parameters_json_schema field and
-routing calls ourselves sidesteps this; verified against the real running
-lib-data-access service before committing to this design (see
-docs/superpowers/specs/2026-07-10-lib-data-access-integration-design.md).
+routing calls ourselves sidesteps this; verified against a running MCP
+data service before committing to this design (see
+docs/superpowers/specs/2026-07-10-mcp-data-service-integration-design.md).
 """
 
 import json
@@ -126,7 +127,7 @@ MAX_TOOL_TURNS = 8
 
 
 class DynamicUIAgent:
-    """Answers questions using lib-data-access's live data, rendering answers as A2UI UI."""
+    """Answers questions using a live MCP data service, rendering answers as A2UI UI."""
 
     def __init__(
         self,
@@ -212,7 +213,7 @@ class DynamicUIAgent:
     def _build_system_prompt(self) -> str:
         role_description = (
             "You are a data assistant that answers questions about"
-            " vendor, GL line, and rule exception data."
+            " customer, order, and product data."
         )
         workflow_description = (
             "To answer, first call describe_query on the relevant"
@@ -246,11 +247,11 @@ class DynamicUIAgent:
             id="answer_data_questions",
             name="Answer Data Questions",
             description=(
-                "Answers questions about vendor/GL/rule-exception data,"
+                "Answers questions about customer/order/product data,"
                 " rendering results as UI."
             ),
-            tags=["data", "lib-data-access"],
-            examples=["Which GL lines are over $1000?"],
+            tags=["data", "mcp"],
+            examples=["Which orders are over $100?"],
         )
         return AgentCard(
             name="Dynamic UI Agent",
@@ -337,13 +338,13 @@ class DynamicUIAgent:
             return {"result": result_text}
 ```
 
-- [ ] **Step 2: Verify against the real running `lib-data-access` service**
+- [ ] **Step 2: Verify against the running mock data service**
 
 Confirm the service is up first:
 ```bash
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8001/
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8001/mcp/
 ```
-Expected: `200`. If not, see this plan's Global Constraints for how to start it.
+(Expected: `200` on the GET fallback or `405` — either proves it's listening; the MCP endpoint speaks POST. If nothing listens, start it: `cd /Users/namdarmesri/Projects/dynamic-ui/mock-data && uv run server.py`.)
 
 Then run a standalone verification script from `/Users/namdarmesri/Projects/dynamic-ui/backend`:
 ```bash
@@ -359,20 +360,20 @@ async def main():
     )
     async with AsyncExitStack() as stack:
         await agent.connect(stack)
-        text, payload = await agent.answer('Which GL lines are over \$1000?')
+        text, payload = await agent.answer('Which orders are over \$100?')
         print('TEXT:', text)
         print('PAYLOAD MESSAGES:', len(payload) if payload else 0)
 
 asyncio.run(main())
 "
 ```
-Expected: `TEXT:` a short correct answer referencing real GL line data (e.g. mentioning GL-1 at \$7,500 and GL-2 at \$1,200 — the seeded demo data); `PAYLOAD MESSAGES: 2` (a `createSurface` and an `updateComponents` message).
+Expected: `TEXT:` a short correct answer referencing the mock data (e.g. mentioning the \$799.98 order or the \$399.99 monitor order); `PAYLOAD MESSAGES: 2` (a `createSurface` and an `updateComponents` message).
 
 - [ ] **Step 3: Commit**
 
 ```bash
 cd /Users/namdarmesri/Projects/dynamic-ui && git add backend/agent.py
-git commit -m "Rewrite DynamicUIAgent to query lib-data-access via a live MCP session"
+git commit -m "Rewrite DynamicUIAgent to query the MCP data service via a live session"
 ```
 
 ---
@@ -424,7 +425,7 @@ git commit -m "Await DynamicUIAgent.answer(), now async"
 - [ ] **Step 1: Replace `backend/__main__.py` with this exact content**
 
 ```python
-"""Entrypoint: connects to lib-data-access's MCP server, builds the agent, serves it over A2A."""
+"""Entrypoint: connects to an MCP data server, builds the agent, serves it over A2A."""
 
 import logging
 import os
@@ -459,10 +460,10 @@ def main(host, port):
         if not os.getenv("GEMINI_API_KEY"):
             raise MissingConfigError("GEMINI_API_KEY environment variable not set.")
 
-        mcp_url = os.getenv("LIB_DATA_ACCESS_MCP_URL")
+        mcp_url = os.getenv("MCP_DATA_URL")
         if not mcp_url:
             raise MissingConfigError(
-                "LIB_DATA_ACCESS_MCP_URL environment variable not set."
+                "MCP_DATA_URL environment variable not set."
             )
 
         base_url = f"http://{host}:{port}"
@@ -480,7 +481,7 @@ def main(host, port):
         async def lifespan(app):
             async with AsyncExitStack() as stack:
                 await agent.connect(stack)
-                logger.info("Connected to lib-data-access MCP server at %s", mcp_url)
+                logger.info("Connected to MCP data server at %s", mcp_url)
                 yield
 
         server = A2AStarletteApplication(
@@ -505,7 +506,7 @@ if __name__ == "__main__":
     main()
 ```
 
-Note: the `MissingConfigError`/`exit(1)` pattern only covers the synchronous pre-flight checks (env vars present) — a failure *inside* `agent.connect()` during lifespan startup (e.g. `lib-data-access` unreachable) surfaces as a Starlette/uvicorn startup failure instead, not a caught `MissingConfigError`. Both fail loudly and refuse to serve; they just report through different paths. Don't expect a clean `MissingConfigError`-style message for an unreachable MCP server specifically.
+Note: the `MissingConfigError`/`exit(1)` pattern only covers the synchronous pre-flight checks (env vars present) — a failure *inside* `agent.connect()` during lifespan startup (e.g. the data service unreachable) surfaces as a Starlette/uvicorn startup failure instead, not a caught `MissingConfigError`. Both fail loudly and refuse to serve; they just report through different paths. Don't expect a clean `MissingConfigError`-style message for an unreachable MCP server specifically.
 
 - [ ] **Step 2: Verify — restart the backend and confirm it connects at startup**
 
@@ -516,7 +517,7 @@ cd /Users/namdarmesri/Projects/dynamic-ui/backend
 nohup uv run . > /tmp/dynamic-ui-backend.log 2>&1 < /dev/null &
 disown
 sleep 3
-grep "Connected to lib-data-access" /tmp/dynamic-ui-backend.log
+grep "Connected to MCP data server" /tmp/dynamic-ui-backend.log
 curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/.well-known/agent-card.json
 ```
 Expected: the grep finds the connection log line, and the curl returns `200`.
@@ -525,7 +526,7 @@ Expected: the grep finds the connection log line, and the curl returns `200`.
 
 ```bash
 cd /Users/namdarmesri/Projects/dynamic-ui && git add backend/__main__.py
-git commit -m "Add lifespan hook to open/close the lib-data-access MCP session"
+git commit -m "Add lifespan hook to open/close the MCP data-service session"
 ```
 
 ---
@@ -561,27 +562,27 @@ Expected: `200` (no import errors from the deleted files — confirms nothing el
 
 - [ ] **Step 3: End-to-end verification against real questions, including one that exercises joins**
 
-The frontend dev server should already be running on `:3000` (start it if not: `cd /Users/namdarmesri/Projects/dynamic-ui/frontend && nohup npx next dev > /tmp/dynamic-ui-frontend.log 2>&1 < /dev/null & disown`).
+The mock data service must be running on `:8001` (`cd ../mock-data && uv run server.py`). The frontend dev server should already be running on `:3000` (start it if not: `cd /Users/namdarmesri/Projects/dynamic-ui/frontend && nohup npx next dev > /tmp/dynamic-ui-frontend.log 2>&1 < /dev/null & disown`).
 
 Run each of these against the full stack via the Next.js proxy:
 ```bash
 curl -s -X POST http://localhost:3000/api/agent -H 'Content-Type: application/json' \
-  -d '{"query": "List all vendors."}' | python3 -m json.tool
+  -d '{"query": "List all customers."}' | python3 -m json.tool
 
 curl -s -X POST http://localhost:3000/api/agent -H 'Content-Type: application/json' \
-  -d '{"query": "Which GL lines are over $1000?"}' | python3 -m json.tool
+  -d '{"query": "Which orders are over $100?"}' | python3 -m json.tool
 
 curl -s -X POST http://localhost:3000/api/agent -H 'Content-Type: application/json' \
-  -d '{"query": "Show me GL line GL-2 along with its rule exceptions."}' | python3 -m json.tool
+  -d '{"query": "Show me order 5 along with its customer."}' | python3 -m json.tool
 ```
-Expected: all three return non-empty `text` and `a2uiMessages` with real data traceable to `lib-data-access`'s seeded Postgres data (not fabricated) — the third question in particular should show the agent using `$expand` (a join), which the CSV-backed version never exercised.
+Expected: all three return non-empty `text` and `a2uiMessages` with real data traceable to the mock service's synthetic dataset (not fabricated) — the third question in particular should show the agent using `expand` (a join), which the CSV-backed version never exercised.
 
 - [ ] **Step 4: Manual browser smoke test**
 
-Open `http://localhost:3000`, ask "Which GL lines are over $1000?", confirm a sensible UI renders (table or card) with correct data. This mirrors the original project's Task 12 smoke test, now against real Postgres data instead of the CSV fixture.
+Open `http://localhost:3000`, ask "Which orders are over $100?", confirm a sensible UI renders (table or card) with correct data. This mirrors the original project's Task 12 smoke test, now against the mock data service instead of the CSV fixture.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Users/namdarmesri/Projects/dynamic-ui && git commit -m "Remove CSV data source; dynamic-ui now backed by lib-data-access end-to-end"
+cd /Users/namdarmesri/Projects/dynamic-ui && git commit -m "Remove CSV data source; dynamic-ui now backed by the MCP data service end-to-end"
 ```

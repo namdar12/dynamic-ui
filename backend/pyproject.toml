@@ -1,7 +1,7 @@
 [project]
 name = "dynamic-ui-backend"
 version = "0.1.0"
-description = "Chatbot agent answering questions via a live lib-data-access MCP connection, using A2UI over A2A, no Google ADK."
+description = "Chatbot agent answering questions via a live MCP data connection, using A2UI over A2A, no Google ADK."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -12,7 +12,7 @@ dependencies = [
     "uvicorn>=0.40.0",
     "python-dotenv>=1.1.0",
     "click>=8.1.8",
-    "mcp>=1.28.1",
+    "mcp>=1.28.1,<2",
 ]
 
 [tool.hatch.build.targets.wheel]

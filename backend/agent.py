@@ -1,4 +1,4 @@
-"""DynamicUIAgent: answers questions via Gemini + lib-data-access's live MCP
+"""DynamicUIAgent: answers questions via Gemini + a live MCP data
 server, no Google ADK.
 
 Tool calls are dispatched manually (automatic_function_calling is disabled)
@@ -7,9 +7,9 @@ automatic function calling crashes -- generate_content unconditionally
 deep-copies the request config, and a live session holds an unpicklable
 asyncio.Future. Converting each MCP tool's schema to a plain
 FunctionDeclaration via the public parameters_json_schema field and
-routing calls ourselves sidesteps this; verified against the real running
-lib-data-access service before committing to this design (see
-docs/superpowers/specs/2026-07-10-lib-data-access-integration-design.md).
+routing calls ourselves sidesteps this; verified against a running MCP data service before committing
+to this design (see
+docs/superpowers/specs/2026-07-10-mcp-data-service-integration-design.md).
 """
 
 import json
@@ -36,7 +36,7 @@ MAX_TOOL_TURNS = 8
 
 
 class DynamicUIAgent:
-    """Answers questions using lib-data-access's live data, rendering answers as A2UI UI."""
+    """Answers questions using a live MCP data service, rendering answers as A2UI UI."""
 
     def __init__(
         self,
@@ -122,7 +122,7 @@ class DynamicUIAgent:
     def _build_system_prompt(self) -> str:
         role_description = (
             "You are a data assistant that answers questions about"
-            " vendor, GL line, and rule exception data."
+            " customer, order, and product data."
         )
         workflow_description = (
             "To answer, first call describe_query on the relevant"
@@ -156,11 +156,11 @@ class DynamicUIAgent:
             id="answer_data_questions",
             name="Answer Data Questions",
             description=(
-                "Answers questions about vendor/GL/rule-exception data,"
+                "Answers questions about customer/order/product data,"
                 " rendering results as UI."
             ),
-            tags=["data", "lib-data-access"],
-            examples=["Which GL lines are over $1000?"],
+            tags=["data", "mcp"],
+            examples=["Which orders are over $100?"],
         )
         return AgentCard(
             name="Dynamic UI Agent",

@@ -1,0 +1,28 @@
+{
+  "global": "DynamicUiCatalog",
+  "pkg": "frontend",
+  "pkgDir": "/Users/namdarmesri/Projects/dynamic-ui/frontend",
+  "extraEntries": [],
+  "exported": [],
+  "storybookStatic": null,
+  "keyRecipe": 7,
+  "cfgSliceGlobal": "a139d95ad8ab0a8ba08b44a258c54602e36090304087f48fe923c61aa5a8ae08",
+  "components": [
+    {
+      "name": "Chart",
+      "group": "catalog",
+      "srcSha": null,
+      "sourceKey": "3476a3a80bfa22d1",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "Table",
+      "group": "catalog",
+      "srcSha": null,
+      "sourceKey": "c259807a0150929e",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    }
+  ]
+}

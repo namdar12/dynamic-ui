@@ -1,4 +1,4 @@
-"""Entrypoint: connects to lib-data-access's MCP server, builds the agent, serves it over A2A."""
+"""Entrypoint: connects to an MCP data server, builds the agent, serves it over A2A."""
 
 import logging
 import os
@@ -33,10 +33,10 @@ def main(host, port):
         if not os.getenv("GEMINI_API_KEY"):
             raise MissingConfigError("GEMINI_API_KEY environment variable not set.")
 
-        mcp_url = os.getenv("LIB_DATA_ACCESS_MCP_URL")
+        mcp_url = os.getenv("MCP_DATA_URL")
         if not mcp_url:
             raise MissingConfigError(
-                "LIB_DATA_ACCESS_MCP_URL environment variable not set."
+                "MCP_DATA_URL environment variable not set."
             )
 
         base_url = f"http://{host}:{port}"
@@ -54,7 +54,7 @@ def main(host, port):
         async def lifespan(app):
             async with AsyncExitStack() as stack:
                 await agent.connect(stack)
-                logger.info("Connected to lib-data-access MCP server at %s", mcp_url)
+                logger.info("Connected to MCP data server at %s", mcp_url)
                 yield
 
         server = A2AStarletteApplication(
