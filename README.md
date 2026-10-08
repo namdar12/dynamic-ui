@@ -52,7 +52,7 @@ orders, products):
 ```bash
 cd mock-data
 uv sync
-uv run server.py          # serves http://localhost:8001/mcp/
+uv run server.py          # serves http://localhost:8001/mcp
 ```
 
 Then the agent backend (needs a Gemini API key):
@@ -85,7 +85,7 @@ Open http://localhost:3000 and ask things like:
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `GEMINI_API_KEY` | yes | — | Key from [Google AI Studio](https://aistudio.google.com/apikey) |
-| `MCP_DATA_URL` | yes | — | Streamable-HTTP MCP endpoint, e.g. `http://localhost:8001/mcp/` |
+| `MCP_DATA_URL` | yes | — | Streamable-HTTP MCP endpoint, e.g. `http://localhost:8001/mcp` |
 | `GEMINI_MODEL` | no | `gemini-3-flash-preview` | Gemini model name |
 
 ## Using a real data service

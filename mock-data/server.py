@@ -8,7 +8,7 @@ orders, products). No real data, no database, no network calls.
 Run:
     cd mock-data && uv sync && uv run server.py [--host 127.0.0.1 --port 8001]
 
-Then point the backend at it with ``MCP_DATA_URL=http://localhost:8001/mcp/``.
+Then point the backend at it with ``MCP_DATA_URL=http://localhost:8001/mcp``.
 """
 
 from __future__ import annotations

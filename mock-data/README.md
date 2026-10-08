@@ -22,14 +22,14 @@ Filter grammar: clauses joined by `and`, each `<field> <op> <value>` with
 ```bash
 cd mock-data
 uv sync
-uv run server.py            # serves http://127.0.0.1:8001/mcp/
+uv run server.py            # serves http://127.0.0.1:8001/mcp
 uv run server.py --port 8002  # custom port
 ```
 
 Then point the backend at it in `backend/.env`:
 
 ```
-MCP_DATA_URL=http://localhost:8001/mcp/
+MCP_DATA_URL=http://localhost:8001/mcp
 ```
 
 ## Swapping in a real service
