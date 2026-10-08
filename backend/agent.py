@@ -34,6 +34,13 @@ CATALOG_PATH = str(Path(__file__).parent / "catalog" / "dynamic_ui_catalog.json"
 # converges to a final answer.
 MAX_TOOL_TURNS = 8
 
+OUT_OF_TURNS_PROMPT = (
+    "You have run out of tool calls for this question. Without calling any"
+    " more tools, explain in two or three sentences what you found. If the"
+    " data doesn't contain what was asked, say so plainly, name the fields"
+    " that are available, and suggest a related question you can answer."
+)
+
 
 class DynamicUIAgent:
     """Answers questions using a live MCP data service, rendering answers as A2UI UI."""
@@ -138,10 +145,20 @@ class DynamicUIAgent:
             " response -- always use the tool call instead. After calling"
             " the tool, give a brief one-sentence conversational reply."
         )
+        missing_data_description = (
+            "If describe_query shows the data has no entity or field that"
+            " can answer the question (for example, the user asks about"
+            " inventory but no entity tracks stock), stop querying: do not"
+            " guess entity or field names. Reply in plain text, without"
+            " calling send_a2ui_json_to_client, saying the data doesn't"
+            " include that, naming the fields that do exist for the closest"
+            " entity, and suggesting one related question you can answer."
+        )
         return "\n\n".join(
             [
                 role_description,
                 f"## Workflow Description:\n{workflow_description}",
+                f"## When the data can't answer:\n{missing_data_description}",
                 self._catalog.render_as_llm_instructions(),
             ]
         )
@@ -173,13 +190,19 @@ class DynamicUIAgent:
             skills=[skill],
         )
 
-    async def answer(self, query: str) -> tuple[str, Optional[list[dict[str, Any]]]]:
-        """Answers one question. Returns (reply_text, a2ui_messages_or_None)."""
+    async def answer(
+        self, query: str
+    ) -> tuple[str, Optional[list[dict[str, Any]]], list[dict[str, Any]]]:
+        """Answers one question.
+
+        Returns (reply_text, a2ui_messages_or_None, tool_calls), where
+        tool_calls lists every MCP data tool call made, as {"name", "args"}.
+        """
         assert self._session is not None and self._gemini_tool is not None, (
             "connect() must be called before answer()"
         )
 
-        captured: dict[str, Any] = {}
+        captured: dict[str, Any] = {"tool_calls": []}
         contents: list[types.Content] = [
             types.Content(role="user", parts=[types.Part(text=query)])
         ]
@@ -188,13 +211,7 @@ class DynamicUIAgent:
             response = await self._client.aio.models.generate_content(
                 model=self._model_name,
                 contents=contents,
-                config=types.GenerateContentConfig(
-                    system_instruction=self._system_prompt,
-                    tools=[self._gemini_tool],
-                    automatic_function_calling=types.AutomaticFunctionCallingConfig(
-                        disable=True
-                    ),
-                ),
+                config=self._generate_config(allow_tool_calls=True),
             )
             candidate = response.candidates[0]
             contents.append(candidate.content)
@@ -205,7 +222,11 @@ class DynamicUIAgent:
                 if part.function_call
             ]
             if not function_calls:
-                return response.text or "", captured.get("payload")
+                return (
+                    response.text or "",
+                    captured.get("payload"),
+                    captured["tool_calls"],
+                )
 
             response_parts = []
             for fc in function_calls:
@@ -219,7 +240,40 @@ class DynamicUIAgent:
                 )
             contents.append(types.Content(role="user", parts=response_parts))
 
-        return "Sorry, I couldn't complete that request.", None
+        # Out of tool turns: rather than a bare apology, have the model explain
+        # what it found (and what the data lacks) without calling more tools.
+        contents.append(
+            types.Content(
+                role="user",
+                parts=[types.Part(text=OUT_OF_TURNS_PROMPT)],
+            )
+        )
+        response = await self._client.aio.models.generate_content(
+            model=self._model_name,
+            contents=contents,
+            config=self._generate_config(allow_tool_calls=False),
+        )
+        return (
+            response.text or "Sorry, I couldn't complete that request.",
+            captured.get("payload"),
+            captured["tool_calls"],
+        )
+
+    def _generate_config(self, allow_tool_calls: bool) -> types.GenerateContentConfig:
+        # Tools stay declared even when calls are off: the history already
+        # holds function calls, and mode NONE just forbids new ones.
+        return types.GenerateContentConfig(
+            system_instruction=self._system_prompt,
+            tools=[self._gemini_tool],
+            tool_config=types.ToolConfig(
+                function_calling_config=types.FunctionCallingConfig(
+                    mode="AUTO" if allow_tool_calls else "NONE"
+                )
+            ),
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                disable=True
+            ),
+        )
 
     async def _call_tool(
         self, name: str, args: dict[str, Any], captured: dict[str, Any]
@@ -233,6 +287,7 @@ class DynamicUIAgent:
             except Exception as e:
                 return {"error": f"Failed to validate A2UI JSON: {e}"}
 
+        captured["tool_calls"].append({"name": name, "args": args})
         try:
             result = await self._session.call_tool(name, args)
         except Exception as e:
