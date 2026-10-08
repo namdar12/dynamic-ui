@@ -1,113 +1,146 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { MessageProcessor } from '@a2ui/web_core/v0_9';
-import type { SurfaceModel } from '@a2ui/web_core/v0_9';
-import { A2uiSurface } from '@a2ui/react/v0_9';
+import type { A2uiMessage } from '@a2ui/web_core/v0_9';
 import type { ReactComponentImplementation } from '@a2ui/react/v0_9';
 import { dynamicUiCatalog } from '@/components/catalog/catalog';
+import { ChatHeader, type AgentStatus } from '@/components/chat/header';
+import { EmptyState } from '@/components/chat/empty-state';
+import { Composer } from '@/components/chat/composer';
+import {
+  AgentAnswer,
+  AgentError,
+  AgentLoading,
+  UserMessage,
+  type ToolCall,
+  type Turn,
+} from '@/components/chat/turn';
 
-type ChatMessage = { role: 'user' | 'agent'; text: string };
+type AgentResponse = { text?: string; a2uiMessages?: A2uiMessage[]; toolCalls?: ToolCall[]; error?: string };
+
+// The backend is stateless and names every answer's surface "main". Give each
+// turn's messages that turn's own surface id instead, so earlier answers stay
+// rendered in the thread alongside new ones.
+function retargetSurface(messages: A2uiMessage[], surfaceId: string): A2uiMessage[] {
+  return messages.map(
+    (message) =>
+      Object.fromEntries(
+        Object.entries(message).map(([key, value]) =>
+          value && typeof value === 'object' && 'surfaceId' in value
+            ? [key, { ...value, surfaceId }]
+            : [key, value],
+        ),
+      ) as A2uiMessage,
+  );
+}
 
 export default function Home() {
-  const [query, setQuery] = useState('');
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [surface, setSurface] = useState<SurfaceModel<ReactComponentImplementation> | null>(
-    null,
+  const [turns, setTurns] = useState<Turn[]>([]);
+  const [status, setStatus] = useState<AgentStatus>('checking');
+  const [processor] = useState(
+    () => new MessageProcessor<ReactComponentImplementation>([dynamicUiCatalog]),
   );
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const latestTurnRef = useRef<HTMLDivElement>(null);
+  const busy = turns.some((t) => t.status === 'loading');
 
-  const processor = useMemo(() => {
-    const p = new MessageProcessor<ReactComponentImplementation>([dynamicUiCatalog]);
-    p.onSurfaceCreated((s) => setSurface(s));
-    return p;
+  useEffect(() => {
+    fetch('/api/agent')
+      .then((res) => res.json())
+      .then((data) => setStatus(data.online ? 'online' : 'offline'))
+      .catch(() => setStatus('offline'));
   }, []);
-  const processorRef = useRef(processor);
-  processorRef.current = processor;
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!query.trim() || loading) return;
+  // Bring the newest turn's question into view when it's asked and again when
+  // its answer lands, so a tall answer is read from its top.
+  const latest = turns.at(-1);
+  useEffect(() => {
+    latestTurnRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [latest?.id, latest?.status]);
 
-    const userQuery = query;
-    setMessages((prev) => [...prev, { role: 'user', text: userQuery }]);
-    setQuery('');
-    setError(null);
-    setLoading(true);
+  function updateTurn(next: Turn) {
+    setTurns((prev) => prev.map((t) => (t.id === next.id ? next : t)));
+  }
 
+  // Asks `query` as a new turn, or re-asks it in place when `retryId` names
+  // an earlier turn that failed.
+  async function ask(query: string, retryId?: string) {
+    if (busy) return;
+    const id = retryId ?? crypto.randomUUID();
+    const loading: Turn = { id, query, status: 'loading' };
+    setTurns((prev) => (retryId ? prev.map((t) => (t.id === id ? loading : t)) : [...prev, loading]));
+
+    let res: Response;
+    let data: AgentResponse;
     try {
-      const res = await fetch('/api/agent', {
+      res = await fetch('/api/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: userQuery }),
+        body: JSON.stringify({ query }),
       });
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error ?? 'The agent request failed.');
-        return;
-      }
-
-      if (data.text) {
-        setMessages((prev) => [...prev, { role: 'agent', text: data.text }]);
-      }
-      if (data.a2uiMessages?.length) {
-        const proc = processorRef.current;
-        // Every turn's response re-creates surface "main" from scratch (the
-        // backend is stateless and has no memory of prior turns). But
-        // MessageProcessor throws if createSurface targets an id that's
-        // already in use, so delete the previous turn's surface first.
-        if (proc.model.getSurface('main')) {
-          proc.model.deleteSurface('main');
-        }
-        proc.processMessages(data.a2uiMessages);
-      }
+      data = await res.json();
     } catch (err) {
       console.error('Agent request failed:', err);
-      setError('Could not reach the agent.');
-    } finally {
-      setLoading(false);
+      setStatus('offline');
+      updateTurn({ id, query, status: 'error', error: 'Could not reach the app server.' });
+      return;
     }
+
+    if (!res.ok) {
+      if (res.status === 502) setStatus('offline');
+      updateTurn({ id, query, status: 'error', error: data.error ?? 'The agent request failed.' });
+      return;
+    }
+
+    setStatus('online');
+    let surface = null;
+    if (data.a2uiMessages?.length) {
+      processor.processMessages(retargetSurface(data.a2uiMessages, id));
+      surface = processor.model.getSurface(id) ?? null;
+    }
+    updateTurn({
+      id,
+      query,
+      status: 'done',
+      text: data.text ?? '',
+      surface,
+      toolCalls: data.toolCalls ?? [],
+    });
+  }
+
+  function newChat() {
+    for (const t of turns) {
+      if (t.status === 'done' && t.surface) processor.model.deleteSurface(t.id);
+    }
+    setTurns([]);
   }
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-4 p-6">
-      <h1 className="text-xl font-semibold">Dynamic UI Chatbot</h1>
+    <div className="flex min-h-screen flex-col bg-ground text-ink antialiased">
+      <ChatHeader status={status} onNewChat={newChat} />
 
-      <div className="flex flex-col gap-2">
-        {messages.map((m, i) => (
-          <div key={i} className={m.role === 'user' ? 'font-medium' : 'text-gray-700'}>
-            <span className="mr-2 text-sm uppercase text-gray-400">{m.role}</span>
-            {m.text}
-          </div>
-        ))}
-      </div>
-
-      {error && <div className="rounded bg-red-100 p-2 text-red-800">{error}</div>}
-
-      <form onSubmit={handleSubmit} className="flex gap-2">
-        <input
-          className="flex-1 rounded border p-2"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Ask a question about the data..."
-          disabled={loading}
-        />
-        <button
-          type="submit"
-          className="rounded bg-black px-4 py-2 text-white disabled:opacity-50"
-          disabled={loading}
-        >
-          {loading ? 'Asking...' : 'Ask'}
-        </button>
-      </form>
-
-      <div className="rounded border p-4">
-        {surface ? <A2uiSurface surface={surface} /> : (
-          <p className="text-gray-400">Ask a question to see it rendered here.</p>
+      <main className="mx-auto box-border flex w-full max-w-[880px] flex-1 flex-col gap-8 px-6 py-8">
+        {turns.length === 0 ? (
+          <EmptyState onAsk={ask} disabled={busy} />
+        ) : (
+          turns.map((turn) => (
+            <div
+              key={turn.id}
+              ref={turn === latest ? latestTurnRef : undefined}
+              className="flex scroll-mt-6 flex-col gap-8"
+            >
+              <UserMessage text={turn.query} />
+              {turn.status === 'loading' && <AgentLoading />}
+              {turn.status === 'error' && (
+                <AgentError message={turn.error} onRetry={() => ask(turn.query, turn.id)} />
+              )}
+              {turn.status === 'done' && <AgentAnswer turn={turn} />}
+            </div>
+          ))
         )}
-      </div>
-    </main>
+      </main>
+
+      <Composer busy={busy} onAsk={ask} />
+    </div>
   );
 }

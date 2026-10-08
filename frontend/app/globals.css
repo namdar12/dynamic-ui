@@ -1,26 +1,88 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
+/* "Quiet ledger" palette: warm off-white ground, near-black ink, one blue
+   accent. Light only: the hand-picked greys below are tuned for contrast on
+   light surfaces. */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-ground: #fafaf9;
+  --color-surface: #ffffff;
+  --color-ink: #18181b;
+  --color-muted: #52525b;
+  --color-caption: #71717a;
+  --color-line: #e4e4e7;
+  --color-line-strong: #d4d4d8;
+  --color-subtle: #f4f4f5;
+  --color-accent: #2563eb;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Theme the @a2ui/react basic catalog (Text, Card, Tabs, List, ...) through
+   its CSS variables so agent-drawn UI matches the page. */
+:root {
+  --a2ui-color-on-background: #18181b;
+  --a2ui-color-on-surface: #18181b;
+  --a2ui-color-surface: #ffffff;
+  --a2ui-color-primary: #2563eb;
+  --a2ui-color-secondary: #f4f4f5;
+  --a2ui-color-on-secondary: #18181b;
+  --a2ui-color-border: #e4e4e7;
+  --a2ui-border: 1px solid #e4e4e7;
+  --a2ui-border-radius: 8px;
+  --a2ui-card-border-radius: 12px;
+  --a2ui-card-box-shadow: none;
+  --a2ui-card-padding: 20px;
+  --a2ui-card-margin: 0;
+  --a2ui-spacing-xs: 4px;
+  --a2ui-spacing-s: 8px;
+  --a2ui-spacing-m: 12px;
+  --a2ui-spacing-l: 20px;
+  --a2ui-font-size-xs: 12px;
+  --a2ui-font-size-s: 13px;
+  --a2ui-font-size-m: 15px;
+  --a2ui-font-size-l: 17px;
+  --a2ui-font-size-xl: 17px;
+  --a2ui-font-size-2xl: 22px;
+  --a2ui-icon-size: 20px;
+  --a2ui-line-height-headings: 1.25;
+  --a2ui-text-caption-color: #71717a;
+  --a2ui-label-font-weight: 500;
+  --a2ui-tabs-header-color: #52525b;
+  --a2ui-tabs-header-color-active: #18181b;
+  --a2ui-tabs-header-background-active: #f4f4f5;
+  --a2ui-tabs-content-padding: 12px 0 0;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-ground);
+  color: var(--color-ink);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Plain Text isn't wrapped in <p> without a markdown renderer, so the
+   catalog's own body size never applies; set it here. */
+.answer-surface {
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.answer-surface :is(h1, h2, h3) {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+  }
 }
