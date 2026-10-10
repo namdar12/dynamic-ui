@@ -27,7 +27,7 @@ const LINE = '1px solid #e4e4e7';
 const ROW_LINE = '1px solid #f4f4f5';
 
 // "$1,209.93", "-12", "40%" -> number; anything else -> null.
-function toNumber(value: unknown): number | null {
+export function toNumber(value: unknown): number | null {
   if (typeof value === 'number') return value;
   if (typeof value !== 'string') return null;
   const cleaned = value.replace(/[$€£,%\s]/g, '');

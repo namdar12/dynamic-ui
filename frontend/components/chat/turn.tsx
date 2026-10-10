@@ -1,12 +1,15 @@
 import { A2uiSurface } from '@a2ui/react/v0_9';
 import type { ReactComponentImplementation } from '@a2ui/react/v0_9';
 import type { SurfaceModel } from '@a2ui/web_core/v0_9';
-import { AlertIcon, GridIcon } from './icons';
+import { AlertIcon, CheckIcon, GridIcon } from './icons';
 
 export type ToolCall = { name: string; args: Record<string, unknown> };
 
+// A finished tool call reported while the answer is still being worked out.
+export type Step = ToolCall & { count?: number; failed?: boolean };
+
 export type Turn = { id: string; query: string } & (
-  | { status: 'loading' }
+  | { status: 'loading'; steps: Step[] }
   | { status: 'error'; error: string }
   | {
       status: 'done';
@@ -83,22 +86,56 @@ function SkeletonRow() {
   );
 }
 
-export function AgentLoading() {
+function StepLabel({ step }: { step: Step }) {
+  if (step.name === 'describe_query') {
+    return <span>Read the {typeof step.args.entity === 'string' ? step.args.entity : 'data'} fields</span>;
+  }
+  return (
+    <span className="min-w-0">
+      {step.name.startsWith('query_') && 'Queried '}
+      <code className="font-mono text-[13px] break-all text-ink">{formatCall(step)}</code>
+      {step.count !== undefined && ` · ${step.count} ${step.count === 1 ? 'row' : 'rows'}`}
+      {step.failed && <span className="text-red-700"> · failed</span>}
+    </span>
+  );
+}
+
+// What the agent is most likely doing now, given the last step it finished:
+// no tool has run while Gemini reads the question; after a schema lookup it
+// writes a query; after a query it is usually composing the UI.
+function pendingLabel(steps: Step[]) {
+  const last = steps.at(-1);
+  if (!last) return 'Reading your question…';
+  if (last.name === 'describe_query') return 'Planning the query…';
+  return 'Building your answer…';
+}
+
+export function AgentLoading({ steps }: { steps: Step[] }) {
   return (
     <article aria-busy="true" className="flex flex-col gap-3">
       <AgentLabel />
-      <p role="status" className="flex items-center gap-2.5 text-[15px] leading-relaxed text-muted">
-        <span className="inline-flex gap-1" aria-hidden="true">
-          {[0, 0.2, 0.4].map((delay) => (
-            <span
-              key={delay}
-              className="size-1.5 rounded-full bg-accent"
-              style={{ animation: `pulse-soft 1.2s ease-in-out ${delay}s infinite` }}
-            />
-          ))}
-        </span>
-        Querying the data and building your answer…
-      </p>
+      <ol role="status" className="flex flex-col gap-2">
+        {steps.map((step, i) => (
+          <li key={i} className="flex items-baseline gap-2.5 text-sm leading-relaxed text-muted">
+            <span className="flex w-[26px] flex-none translate-y-0.5 justify-center" aria-hidden="true">
+              <CheckIcon className="size-3.5 text-accent" />
+            </span>
+            <StepLabel step={step} />
+          </li>
+        ))}
+        <li className="flex items-center gap-2.5 text-[15px] leading-relaxed text-muted">
+          <span className="inline-flex w-[26px] flex-none gap-1" aria-hidden="true">
+            {[0, 0.2, 0.4].map((delay) => (
+              <span
+                key={delay}
+                className="size-1.5 rounded-full bg-accent"
+                style={{ animation: `pulse-soft 1.2s ease-in-out ${delay}s infinite` }}
+              />
+            ))}
+          </span>
+          {pendingLabel(steps)}
+        </li>
+      </ol>
       <div
         aria-hidden="true"
         className="overflow-hidden rounded-xl border border-line bg-surface"

@@ -1,0 +1,64 @@
+[
+  {
+    "question": "Which orders are still pending?",
+    "reply": "There are 3 pending orders.",
+    "a2ui": [
+      {"version": "v0.9", "createSurface": {"surfaceId": "main", "catalogId": "dynamic-ui-catalog"}},
+      {"version": "v0.9", "updateComponents": {"surfaceId": "main", "components": [
+        {"id": "root", "component": "Column", "children": ["title", "table"]},
+        {"id": "title", "component": "Text", "variant": "h3", "text": "Pending orders"},
+        {"id": "table", "component": "Table",
+          "columns": [
+            {"key": "id", "label": "Order"},
+            {"key": "customer", "label": "Customer"},
+            {"key": "total", "label": "Total"},
+            {"key": "ordered_at", "label": "Ordered"}
+          ],
+          "rows": [
+            {"id": 2, "customer": "Ana Lopez", "total": "$48.50", "ordered_at": "2026-09-03"},
+            {"id": 6, "customer": "Ben Carter", "total": "$129.99", "ordered_at": "2026-09-14"},
+            {"id": 9, "customer": "Ana Lopez", "total": "$19.99", "ordered_at": "2026-09-20"}
+          ]}
+      ]}}
+    ]
+  },
+  {
+    "question": "Show me order 7 with its customer.",
+    "reply": "Order 7 is a shipped order from Ben Carter.",
+    "a2ui": [
+      {"version": "v0.9", "createSurface": {"surfaceId": "main", "catalogId": "dynamic-ui-catalog"}},
+      {"version": "v0.9", "updateComponents": {"surfaceId": "main", "components": [
+        {"id": "root", "component": "Row", "children": ["order-card", "customer-card"]},
+        {"id": "order-card", "component": "Card", "weight": 1, "child": "order-body"},
+        {"id": "order-body", "component": "Column", "children": ["order-title", "order-status", "order-total", "order-date"]},
+        {"id": "order-title", "component": "Text", "variant": "h4", "text": "Order #7"},
+        {"id": "order-status", "component": "Text", "text": "Status: shipped"},
+        {"id": "order-total", "component": "Text", "text": "Total: $259.98"},
+        {"id": "order-date", "component": "Text", "text": "Ordered: 2026-09-10"},
+        {"id": "customer-card", "component": "Card", "weight": 1, "child": "customer-body"},
+        {"id": "customer-body", "component": "Column", "children": ["customer-title", "customer-email", "customer-city"]},
+        {"id": "customer-title", "component": "Text", "variant": "h4", "text": "Ben Carter"},
+        {"id": "customer-email", "component": "Text", "text": "Email: ben@example.com"},
+        {"id": "customer-city", "component": "Text", "text": "City: Denver"}
+      ]}}
+    ]
+  },
+  {
+    "question": "Chart revenue by order status.",
+    "reply": "Delivered orders bring in the most revenue.",
+    "a2ui": [
+      {"version": "v0.9", "createSurface": {"surfaceId": "main", "catalogId": "dynamic-ui-catalog"}},
+      {"version": "v0.9", "updateComponents": {"surfaceId": "main", "components": [
+        {"id": "root", "component": "Column", "children": ["title", "chart"]},
+        {"id": "title", "component": "Text", "variant": "h3", "text": "Revenue by status"},
+        {"id": "chart", "component": "Chart", "chartType": "bar", "xKey": "status", "xLabel": "Status", "yLabel": "Revenue (USD)",
+          "series": [{"key": "revenue", "label": "Revenue"}],
+          "data": [
+            {"status": "pending", "revenue": 198.48},
+            {"status": "shipped", "revenue": 389.97},
+            {"status": "delivered", "revenue": 612.4}
+          ]}
+      ]}}
+    ]
+  }
+]

@@ -28,9 +28,11 @@ One question, one turn:
 2. `answer()` runs a hand-rolled tool-calling loop — google-genai's automatic
    function calling deep-copies the request config, which crashes on a live
    MCP `ClientSession` (unpicklable `asyncio.Future`), so dispatch is manual.
-3. The system prompt names exactly one discovery tool, `describe_query`; the
-   model calls it to learn an entity's fields and filter grammar, then queries
-   what it needs. All data tools are discovered dynamically.
+3. The only discovery convention is `describe_query`. At startup the agent
+   calls it once per `query_<entity>` tool and puts the fields and filter
+   grammar in the system prompt, so the model goes straight to querying; it
+   can still call `describe_query` itself for anything not preloaded. All
+   data tools are discovered dynamically.
 4. The model emits its UI through a dedicated `send_a2ui_json_to_client` tool;
    the payload is validated against `backend/catalog/dynamic_ui_catalog.json`
    and returned as A2A `DataPart`s for `@a2ui/react` to render.
@@ -71,6 +73,9 @@ cd frontend
 npm install
 npm run dev              # http://localhost:3000
 ```
+
+If port 8000 is taken, run the agent elsewhere (`uv run . --port 8010`) and
+point the frontend at it: `AGENT_URL=http://localhost:8010 npm run dev`.
 
 Open http://localhost:3000 and ask things like:
 

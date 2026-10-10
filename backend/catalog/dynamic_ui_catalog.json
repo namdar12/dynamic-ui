@@ -995,9 +995,10 @@
               "type": "string",
               "enum": [
                 "bar",
-                "line"
+                "line",
+                "pie"
               ],
-              "description": "Whether to render a bar chart or a line chart."
+              "description": "bar compares values across categories; line shows change over time; pie shows how one total splits into parts. Use pie only for shares of a whole with 3 to 6 categories whose shares differ visibly: for 2 categories, close values, or more than 6, use bar. A pie plots exactly one series: xKey names each slice, the single series key holds its value, and its label captions the total in the middle. xLabel and yLabel are ignored for pie."
             },
             "xKey": {
               "type": "string",
@@ -1006,7 +1007,8 @@
             "series": {
               "type": "array",
               "minItems": 1,
-              "description": "One or more series to plot. Each gets its own solid color; 2 or more series also show a legend.",
+              "maxItems": 5,
+              "description": "One to five series to plot. Each gets its own solid color; 2 or more series also show a legend. For more than five, pick the five that matter or use a Table.",
               "items": {
                 "type": "object",
                 "properties": {

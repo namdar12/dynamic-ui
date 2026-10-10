@@ -7,22 +7,26 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   LabelList,
   Legend,
   Line,
   LineChart,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
+import { toNumber } from './table';
 
 export const ChartApi = {
   name: 'Chart',
   schema: z.object({
     chartType: z
-      .enum(['bar', 'line'])
-      .describe('Whether to render a bar chart or a line chart.'),
+      .enum(['bar', 'line', 'pie'])
+      .describe('Bar or line chart, or a pie (donut) of one series as shares of a whole.'),
     xKey: z.string().describe('Key in each data row to use for the x-axis.'),
     series: z
       .array(
@@ -32,17 +36,23 @@ export const ChartApi = {
         }),
       )
       .min(1)
-      .describe('One or more series to plot. Each gets its own solid color; 2+ series show a legend.'),
+      .max(5)
+      .describe('One to five series to plot. Each gets its own solid color; 2+ series show a legend.'),
     xLabel: z.string().optional().describe('Optional x-axis label.'),
     yLabel: z.string().optional().describe('Optional y-axis label.'),
     data: z.array(z.record(z.any())).describe('Chart data rows.'),
   }),
 } satisfies ComponentApi;
 
-// One color per series, never per category: a single series is all accent
-// blue, so color only ever means "which series". Blue and orange lead because
-// they stay distinguishable for red-green color blindness.
-const PALETTE = ['#2563eb', '#ea580c', '#0d9488', '#db2777', '#7c3aed', '#65a30d'];
+// One palette for every chart: a color per series in bar/line, a color per
+// slice in pie. Validated with the dataviz checker on every pair, not just
+// neighbors, since a pie's slices and a legend's series can be compared in any
+// combination (validate_palette.js --pairs all: CVD ΔE >= 11.7, normal vision
+// ΔE >= 19.9). Blue and orange lead because they stay apart under red-green
+// color blindness. No sixth hue passes alongside these, so colors never cycle:
+// charts take at most five series, and a pie folds extra slices into "Other".
+const PALETTE = ['#2563eb', '#ea580c', '#0d9488', '#854d0e', '#86198f'];
+const PIE_OTHER = '#a1a1aa';
 
 const MONO = 'var(--font-geist-mono), ui-monospace, Menlo, monospace';
 const TICK = { fontSize: 11, fill: '#71717a', fontFamily: MONO };
@@ -58,8 +68,100 @@ const TOOLTIP_STYLE = {
 const formatValue = (v: unknown) =>
   typeof v === 'number' ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : String(v ?? '');
 
+type Slice = { name: string; value: number; color: string };
+
+// Slices keep the data's order, so a category's color follows the category
+// rather than its rank. Past PALETTE.length, the largest slices stay and
+// the rest fold into one gray "Other" at the end.
+function pieSlices(data: Record<string, unknown>[], xKey: string, valueKey: string): Slice[] {
+  const rows = data
+    .map((row) => ({ name: String(row[xKey] ?? ''), value: toNumber(row[valueKey]) ?? 0 }))
+    .filter((row) => row.value > 0);
+  if (rows.length <= PALETTE.length) {
+    return rows.map((row, i) => ({ ...row, color: PALETTE[i] }));
+  }
+  const keep = new Set(
+    [...rows].sort((a, b) => b.value - a.value).slice(0, PALETTE.length).map((row) => row.name),
+  );
+  const kept = rows.filter((row) => keep.has(row.name));
+  const rest = rows.filter((row) => !keep.has(row.name));
+  return [
+    ...kept.map((row, i) => ({ ...row, color: PALETTE[i] })),
+    {
+      name: `Other (${rest.length})`,
+      value: rest.reduce((sum, row) => sum + row.value, 0),
+      color: PIE_OTHER,
+    },
+  ];
+}
+
+// A donut with the total in its hole, beside a legend that names every slice
+// with its value and share, so no slice is identified by color alone.
+function PieView({ slices, label }: { slices: Slice[]; label?: string }) {
+  const total = slices.reduce((sum, s) => sum + s.value, 0);
+  const share = (value: number) => `${((value / total) * 100).toFixed(value / total < 0.1 ? 1 : 0)}%`;
+  return (
+    <div className="a2ui-chart" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 32 }}>
+      <div style={{ position: 'relative', width: 220, height: 220, flex: 'none' }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={slices}
+              dataKey="value"
+              nameKey="name"
+              innerRadius="62%"
+              outerRadius="100%"
+              startAngle={90}
+              endAngle={-270}
+              stroke="#ffffff"
+              strokeWidth={2}
+            >
+              {slices.map((s) => (
+                <Cell key={s.name} fill={s.color} />
+              ))}
+            </Pie>
+            <Tooltip contentStyle={TOOLTIP_STYLE} formatter={formatValue} />
+          </PieChart>
+        </ResponsiveContainer>
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+          }}
+        >
+          <span style={{ fontSize: 20, fontWeight: 600, color: '#18181b', fontFamily: MONO }}>
+            {formatValue(total)}
+          </span>
+          {label && <span style={{ fontSize: 12, color: '#71717a' }}>{label}</span>}
+        </div>
+      </div>
+      <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 10, flex: '1 1 200px', maxWidth: 340 }}>
+        {slices.map((s) => (
+          <li key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: '#18181b' }}>
+            <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 3, background: s.color, flex: 'none' }} />
+            <span style={{ flex: 1, minWidth: 0 }}>{s.name}</span>
+            <span style={{ fontFamily: MONO, fontSize: 13, color: '#52525b' }}>{formatValue(s.value)}</span>
+            <span style={{ fontFamily: MONO, fontSize: 13, color: '#71717a', width: 48, textAlign: 'right' }}>
+              {share(s.value)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export const Chart = createComponentImplementation(ChartApi, ({ props }) => {
   const { chartType, xKey, series, xLabel, yLabel, data } = props;
+  if (chartType === 'pie') {
+    // One series only: the slices are its values, named by xKey.
+    return <PieView slices={pieSlices(data, xKey, series[0].key)} label={series[0].label} />;
+  }
   const multiSeries = series.length > 1;
   // insideLeft sits the label directly on top of the tick numbers; moving it
   // outside the axis (with matching left margin + axis width) is what keeps
@@ -106,7 +208,7 @@ export const Chart = createComponentImplementation(ChartApi, ({ props }) => {
             {tooltip}
             {legend}
             {series.map((s, i) => {
-              const color = PALETTE[i % PALETTE.length];
+              const color = PALETTE[i];
               return (
                 <Line
                   key={s.key}
@@ -133,7 +235,7 @@ export const Chart = createComponentImplementation(ChartApi, ({ props }) => {
                 key={s.key}
                 dataKey={s.key}
                 name={s.label ?? s.key}
-                fill={PALETTE[i % PALETTE.length]}
+                fill={PALETTE[i]}
                 radius={[4, 4, 0, 0]}
                 maxBarSize={104}
               >
